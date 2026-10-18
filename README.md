@@ -37,6 +37,14 @@ curl -i -X POST http://localhost:8080/tasks \
 curl -i http://localhost:8080/tasks
 ```
 
+### Search and paginate tasks
+
+```bash
+curl -i 'http://localhost:8080/tasks/search?q=assessment&status=pending&page=1&page_size=20'
+```
+
+Search matches the title or description without regard to case. The optional `status` filter accepts `pending`, `in_progress`, or `completed`. `page` defaults to 1, and `page_size` defaults to 20 and is capped at 100. The response includes `items`, `page`, `page_size`, and `total`.
+
 ### Get one task
 
 ```bash

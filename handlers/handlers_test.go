@@ -83,6 +83,121 @@ func TestGetMissingTaskReturnsNotFound(t *testing.T) {
 	}
 }
 
+func TestSearchTasksFiltersAndPaginates(t *testing.T) {
+	taskStore := store.NewTaskStore()
+	first, err := taskStore.Create(store.CreateTaskInput{Title: "Write report", Description: "Prepare findings"})
+	if err != nil {
+		t.Fatalf("create first task: %v", err)
+	}
+	second, err := taskStore.Create(store.CreateTaskInput{Title: "Review report", Description: "Check results"})
+	if err != nil {
+		t.Fatalf("create second task: %v", err)
+	}
+	if _, err := taskStore.Update(second.ID, store.UpdateTaskInput{
+		Title:       second.Title,
+		Description: second.Description,
+		Status:      store.StatusCompleted,
+	}); err != nil {
+		t.Fatalf("complete second task: %v", err)
+	}
+	third, err := taskStore.Create(store.CreateTaskInput{Title: "Draft report", Description: "Summarize findings"})
+	if err != nil {
+		t.Fatalf("create third task: %v", err)
+	}
+	server := NewAPI(taskStore).Handler()
+
+	req := httptest.NewRequest(http.MethodGet, "/tasks/search?q=REPORT&status=pending&page=1&page_size=1", nil)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var result store.TaskSearchResult
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("decode search result: %v", err)
+	}
+	if result.Total != 2 || result.Page != 1 || result.PageSize != 1 || len(result.Items) != 1 {
+		t.Fatalf("unexpected search result: %+v", result)
+	}
+	if result.Items[0].ID != first.ID {
+		t.Fatalf("result task ID = %d, want %d", result.Items[0].ID, first.ID)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/tasks/search?q=report&status=pending&page=2&page_size=1", nil)
+	rec = httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("decode second page: %v", err)
+	}
+	if rec.Code != http.StatusOK || result.Total != 2 || result.Page != 2 || len(result.Items) != 1 || result.Items[0].ID != third.ID {
+		t.Fatalf("unexpected second page: status=%d result=%+v", rec.Code, result)
+	}
+}
+
+func TestSearchTasksReturnsEmptyItemsForOutOfRangePage(t *testing.T) {
+	taskStore := store.NewTaskStore()
+	if _, err := taskStore.Create(store.CreateTaskInput{Title: "One task"}); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	server := NewAPI(taskStore).Handler()
+	req := httptest.NewRequest(http.MethodGet, "/tasks/search?page=2&page_size=1", nil)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var result store.TaskSearchResult
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("decode search result: %v", err)
+	}
+	if result.Total != 1 || result.Items == nil || len(result.Items) != 0 {
+		t.Fatalf("unexpected out-of-range result: %+v", result)
+	}
+}
+
+func TestSearchTasksRejectsInvalidParameters(t *testing.T) {
+	server := newTestServer()
+	for _, target := range []string{
+		"/tasks/search?status=unknown",
+		"/tasks/search?page=0",
+		"/tasks/search?page_size=nope",
+	} {
+		t.Run(target, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, target, nil)
+			rec := httptest.NewRecorder()
+			server.ServeHTTP(rec, req)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestSearchTasksDefaultsAndCapsPageSize(t *testing.T) {
+	server := newTestServer()
+	for _, test := range []struct {
+		target       string
+		wantPageSize int
+	}{
+		{target: "/tasks/search", wantPageSize: 20},
+		{target: "/tasks/search?page_size=200", wantPageSize: 100},
+	} {
+		req := httptest.NewRequest(http.MethodGet, test.target, nil)
+		rec := httptest.NewRecorder()
+		server.ServeHTTP(rec, req)
+
+		var result store.TaskSearchResult
+		if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+			t.Fatalf("decode %s response: %v", test.target, err)
+		}
+		if rec.Code != http.StatusOK || result.Page != 1 || result.PageSize != test.wantPageSize {
+			t.Fatalf("%s: status=%d page=%d page_size=%d, want 200/1/%d", test.target, rec.Code, result.Page, result.PageSize, test.wantPageSize)
+		}
+	}
+}
+
 func TestUpdateTask(t *testing.T) {
 	taskStore := store.NewTaskStore()
 	created, err := taskStore.Create(store.CreateTaskInput{Title: "Original"})

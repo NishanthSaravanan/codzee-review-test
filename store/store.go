@@ -38,6 +38,13 @@ type Task struct {
 	CreatedAt   time.Time  `json:"created_at"`
 }
 
+type TaskSearchResult struct {
+	Items    []Task `json:"items"`
+	Page     int    `json:"page"`
+	PageSize int    `json:"page_size"`
+	Total    int    `json:"total"`
+}
+
 type CreateTaskInput struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
@@ -104,6 +111,43 @@ func (s *TaskStore) List() []Task {
 	}
 	sort.Slice(tasks, func(i, j int) bool { return tasks[i].ID < tasks[j].ID })
 	return tasks
+}
+
+func (s *TaskStore) Search(query string, status TaskStatus, page, pageSize int) TaskSearchResult {
+	query = strings.ToLower(strings.TrimSpace(query))
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	matching := make([]Task, 0)
+	for _, task := range s.tasks {
+		if status != "" && task.Status != status {
+			continue
+		}
+		if query != "" && !strings.Contains(strings.ToLower(task.Title), query) && !strings.Contains(strings.ToLower(task.Description), query) {
+			continue
+		}
+		matching = append(matching, task)
+	}
+	sort.Slice(matching, func(i, j int) bool { return matching[i].ID < matching[j].ID })
+
+	result := TaskSearchResult{
+		Items:    []Task{},
+		Page:     page,
+		PageSize: pageSize,
+		Total:    len(matching),
+	}
+	if len(matching) == 0 || page > (len(matching)-1)/pageSize+1 {
+		return result
+	}
+
+	start := (page - 1) * pageSize
+	end := start + pageSize
+	if end > len(matching) {
+		end = len(matching)
+	}
+	result.Items = matching[start:end]
+	return result
 }
 
 func (s *TaskStore) Update(id int64, input UpdateTaskInput) (Task, error) {
