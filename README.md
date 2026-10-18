@@ -21,6 +21,16 @@ go test ./...
 go test -race ./...
 ```
 
+## Authentication
+
+Set `TASKFLOW_USERNAME` and `TASKFLOW_PASSWORD` in the server environment. Obtain a token from `/login`, then send it as a Bearer token with task requests. Tokens expire after one hour.
+
+```bash
+curl -i -X POST http://localhost:8080/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"<username>","password":"<password>"}'
+```
+
 ## API
 
 ### Create a task
@@ -28,19 +38,22 @@ go test -race ./...
 ```bash
 curl -i -X POST http://localhost:8080/tasks \
   -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
   -d '{"title":"Write assessment","description":"Create the first PR"}'
 ```
 
 ### List tasks
 
 ```bash
-curl -i http://localhost:8080/tasks
+curl -i http://localhost:8080/tasks \
+  -H 'Authorization: Bearer <access-token>'
 ```
 
 ### Get one task
 
 ```bash
-curl -i http://localhost:8080/tasks/1
+curl -i http://localhost:8080/tasks/1 \
+  -H 'Authorization: Bearer <access-token>'
 ```
 
 ### Update a task
@@ -48,13 +61,15 @@ curl -i http://localhost:8080/tasks/1
 ```bash
 curl -i -X PUT http://localhost:8080/tasks/1 \
   -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
   -d '{"title":"Write assessment","description":"Review Codzee comments","status":"in_progress"}'
 ```
 
 ### Delete a task
 
 ```bash
-curl -i -X DELETE http://localhost:8080/tasks/1
+curl -i -X DELETE http://localhost:8080/tasks/1 \
+  -H 'Authorization: Bearer <access-token>'
 ```
 
 ## Task model
