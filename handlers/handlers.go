@@ -32,11 +32,12 @@ func (a *API) Handler() http.Handler {
 
 func (a *API) routes() {
 	a.mux.HandleFunc("GET /healthz", a.health)
-	a.mux.HandleFunc("POST /tasks", a.createTask)
-	a.mux.HandleFunc("GET /tasks", a.listTasks)
-	a.mux.HandleFunc("GET /tasks/{id}", a.getTask)
-	a.mux.HandleFunc("PUT /tasks/{id}", a.updateTask)
-	a.mux.HandleFunc("DELETE /tasks/{id}", a.deleteTask)
+	a.mux.HandleFunc("POST /login", a.login)
+	a.mux.Handle("POST /tasks", a.requireAuth(http.HandlerFunc(a.createTask)))
+	a.mux.Handle("GET /tasks", a.requireAuth(http.HandlerFunc(a.listTasks)))
+	a.mux.Handle("GET /tasks/{id}", a.requireAuth(http.HandlerFunc(a.getTask)))
+	a.mux.Handle("PUT /tasks/{id}", a.requireAuth(http.HandlerFunc(a.updateTask)))
+	a.mux.Handle("DELETE /tasks/{id}", a.requireAuth(http.HandlerFunc(a.deleteTask)))
 }
 
 func (a *API) health(w http.ResponseWriter, _ *http.Request) {
