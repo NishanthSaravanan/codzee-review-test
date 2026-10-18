@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/NishanthSaravanan/codzee-review-test/store"
@@ -68,6 +69,51 @@ func TestCreateRejectsBlankTitle(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestOversizedRequestBodyReturnsPayloadTooLarge(t *testing.T) {
+	for _, test := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodPost, path: "/tasks"},
+		{method: http.MethodPut, path: "/tasks/1"},
+	} {
+		t.Run(test.method, func(t *testing.T) {
+			body := strings.NewReader(`{"title":"` + strings.Repeat("a", 1<<20) + `"}`)
+			req := httptest.NewRequest(test.method, test.path, body)
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+
+			newTestServer().ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusRequestEntityTooLarge {
+				t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusRequestEntityTooLarge, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestMalformedJSONReturnsBadRequest(t *testing.T) {
+	for _, test := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodPost, path: "/tasks"},
+		{method: http.MethodPut, path: "/tasks/1"},
+	} {
+		t.Run(test.method, func(t *testing.T) {
+			req := httptest.NewRequest(test.method, test.path, bytes.NewBufferString(`{"title":`))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+
+			newTestServer().ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+			}
+		})
 	}
 }
 

@@ -46,7 +46,7 @@ func (a *API) health(w http.ResponseWriter, _ *http.Request) {
 func (a *API) createTask(w http.ResponseWriter, r *http.Request) {
 	var input store.CreateTaskInput
 	if err := decodeJSON(w, r, &input); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeDecodeError(w, err)
 		return
 	}
 
@@ -91,7 +91,7 @@ func (a *API) updateTask(w http.ResponseWriter, r *http.Request) {
 
 	var input store.UpdateTaskInput
 	if err := decodeJSON(w, r, &input); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeDecodeError(w, err)
 		return
 	}
 
@@ -148,6 +148,15 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 		return fmt.Errorf("invalid trailing data: %w", err)
 	}
 	return nil
+}
+
+func writeDecodeError(w http.ResponseWriter, err error) {
+	var maxBytesError *http.MaxBytesError
+	if errors.As(err, &maxBytesError) {
+		writeError(w, http.StatusRequestEntityTooLarge, "request body too large")
+		return
+	}
+	writeError(w, http.StatusBadRequest, err.Error())
 }
 
 func parseID(raw string) (int64, error) {
