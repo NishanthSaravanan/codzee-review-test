@@ -34,6 +34,7 @@ func (a *API) routes() {
 	a.mux.HandleFunc("GET /healthz", a.health)
 	a.mux.HandleFunc("POST /tasks", a.createTask)
 	a.mux.HandleFunc("GET /tasks", a.listTasks)
+	a.mux.HandleFunc("GET /tasks/search", a.searchTasks)
 	a.mux.HandleFunc("GET /tasks/{id}", a.getTask)
 	a.mux.HandleFunc("PUT /tasks/{id}", a.updateTask)
 	a.mux.HandleFunc("DELETE /tasks/{id}", a.deleteTask)
@@ -61,6 +62,32 @@ func (a *API) createTask(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) listTasks(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, a.store.List())
+}
+
+func (a *API) searchTasks(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	status := store.TaskStatus(query.Get("status"))
+	if status != "" && !status.Valid() {
+		writeError(w, http.StatusBadRequest, "status must be pending, in_progress, or completed")
+		return
+	}
+
+	page, err := parsePositiveQueryInt(query.Get("page"), 1)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "page must be a positive integer")
+		return
+	}
+	pageSize, err := parsePositiveQueryInt(query.Get("page_size"), 20)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "page_size must be a positive integer")
+		return
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	result := a.store.Search(query.Get("q"), status, page, pageSize)
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (a *API) getTask(w http.ResponseWriter, r *http.Request) {
@@ -156,6 +183,18 @@ func parseID(raw string) (int64, error) {
 		return 0, errors.New("invalid id")
 	}
 	return id, nil
+}
+
+func parsePositiveQueryInt(raw string, defaultValue int) (int, error) {
+	if raw == "" {
+		return defaultValue, nil
+	}
+
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return 0, errors.New("value must be a positive integer")
+	}
+	return value, nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
